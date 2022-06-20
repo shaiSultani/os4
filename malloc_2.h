@@ -7,6 +7,8 @@
 
 #include <unistd.h>
 #include <cmath>
+#include <cstring>
+
 
 void* smalloc(size_t size);
 
@@ -22,8 +24,6 @@ typedef struct stats_t{
     size_t num_free_bytes = 0;
     size_t num_allocated_blocks = 0;
     size_t num_allocated_bytes = 0;
-    size_t num_meta_data_bytes = 0;
-    size_t size_meta_data = 0;
 } MallocStats;
 
 void* smalloc(size_t size);
