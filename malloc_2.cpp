@@ -15,9 +15,9 @@ void* smalloc(size_t size){
     while (iterator){
         if (iterator->is_free && iterator->size >= size){
             iterator->is_free = false;
-            stats.num_free_bytes-= iterator->size;
-            stats.num_free_blocks--;
-            return (void*)(iterator + sizeof(MallocMetadata));
+            stats.num_free_bytes -= iterator->size;
+            stats.num_free_blocks --;
+            return (void*)((char*)iterator + sizeof(MallocMetadata));
         }
         if (!iterator->next){
             break;
@@ -40,7 +40,7 @@ void* smalloc(size_t size){
     }
     stats.num_allocated_blocks++;
     stats.num_allocated_bytes += size;
-    return (void*)(curr + sizeof(MallocMetadata));
+    return (void*)((char*)curr + sizeof(MallocMetadata));
 }
 
 void* scalloc(size_t num, size_t size){
@@ -57,33 +57,29 @@ void sfree(void* p){
     if(p== nullptr)
         return;
     MallocMetadata *curr_metadata= (MallocMetadata*)((char*)p - sizeof(MallocMetadata));
-    if(!curr_metadata->is_free)
+    if(curr_metadata->is_free)
         return;
-    curr_metadata->is_free =true;
+    curr_metadata->is_free = true;
     stats.num_free_bytes += curr_metadata->size;
     stats.num_free_blocks ++;
-    stats.num_allocated_blocks--;
-    stats.num_allocated_bytes -= curr_metadata->size;
 }
 
 void* srealloc(void* oldp, size_t size){
     if (size == 0 || size > 100000000)
         return nullptr;
     if (oldp == nullptr)
-       return smalloc(size);
+        return smalloc(size);
     MallocMetadata *curr_metadata= (MallocMetadata*)((char*)oldp - sizeof(MallocMetadata));
     size_t old_size = curr_metadata->size;
     if( old_size >= size)
         return oldp;
-    void* newp=smalloc(size);
+    void* newp = smalloc(size);
     if (newp == nullptr)
         return nullptr;
     std::memmove(newp, oldp, curr_metadata->size);
     curr_metadata->is_free = true;
-    stats.num_free_bytes -= size-old_size;
+    stats.num_free_bytes += old_size;
     stats.num_free_blocks ++;
-    stats.num_allocated_blocks--;
-    stats.num_allocated_bytes += size-old_size;
     return newp;
 }
 
