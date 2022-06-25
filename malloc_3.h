@@ -23,6 +23,14 @@ typedef struct stats_t{
     size_t num_allocated_bytes = 0;
 } MallocStats;
 
+class SortedList{
+public:
+    MallocMetadata* head;
+    SortedList() : head(nullptr) {};
+    void insert(MallocMetadata* metadata);
+    void remove(MallocMetadata* node);
+};
+
 void* smalloc(size_t size);
 void* scalloc(size_t num, size_t size);
 void sfree(void* p);

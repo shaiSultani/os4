@@ -1,6 +1,24 @@
 #include <iostream>
+#include "malloc_3.h"
+
+void get_stats (size_t* num_free_blocks, size_t* num_free_bytes, size_t* num_allocated_blocks, size_t* num_allocated_bytes){
+    *num_free_blocks = _num_free_blocks();
+    *num_free_bytes = _num_free_bytes();
+    *num_allocated_blocks = _num_allocated_blocks();
+    *num_allocated_bytes = _num_allocated_bytes();
+}
 
 int main() {
-    std::cout << "Hello, World!" << std::endl;
+    size_t num_free_blocks;
+    size_t num_free_bytes;
+    size_t num_allocated_blocks;
+    size_t num_allocated_bytes;
+    void* one = smalloc(1);
+    void* ten = smalloc(10);
+    void* two = smalloc(2);
+    get_stats( &num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
+    sfree (ten);
+    smalloc(10);
+    get_stats( &num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
     return 0;
 }
