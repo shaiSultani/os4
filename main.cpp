@@ -5,7 +5,7 @@ void get_stats (size_t* num_free_blocks, size_t* num_free_bytes, size_t* num_all
     *num_free_blocks = _num_free_blocks();
     *num_free_bytes = _num_free_bytes();
     *num_allocated_blocks = _num_allocated_blocks();
-    *num_allocated_bytes = _num_allocated_bytes();
+    *num_allocated_bytes = _num_allocated_bytes() - _num_meta_data_bytes();
 }
 
 int main() {
@@ -18,7 +18,8 @@ int main() {
     void* two = smalloc(2);
     get_stats( &num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
     sfree (ten);
-    smalloc(10);
+    get_stats( &num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
+    sfree (one);
     get_stats( &num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
     return 0;
 }

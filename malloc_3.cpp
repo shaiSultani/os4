@@ -11,20 +11,25 @@ SortedList list = SortedList();
 void SortedList::insert(MallocMetadata* newNode) {
     if (head == nullptr){//if list is empty
         head = newNode;
+        wilderness = newNode;
     }
     else if (head->size > newNode->size || (head->size == newNode->size && head > newNode)) {  // insert as first node
         newNode->next = head;
         newNode->next->prev = newNode;
         head = newNode;
+        wilderness = newNode->next;
     } else {
         MallocMetadata *temp = head;
         while (temp->next && (temp->next->size < newNode->size || (temp->next->size == newNode->size && temp->next < newNode))) {
             temp = temp->next;
         }
-        //insert newNode as temp->next
+        ///insert newNode as temp->next
         newNode->next = temp->next;
         if (temp->next) //newNode is not inserted at the end of the list
             newNode->next->prev = newNode;
+        else{
+            wilderness = newNode;
+        }
         temp->next = newNode;
         newNode->prev = temp;
     }
@@ -34,15 +39,81 @@ void SortedList::remove(MallocMetadata* node){
     if(node == head){
         head = node->next;
         head->prev = nullptr;
+        return;
+    }
+    if(node == wilderness){
+        wilderness = node->prev;
+        wilderness->next = nullptr;
+        return;
     }
     else{
         node->prev->next = node->next;
         if(node->next != nullptr)
             node->next->prev = node->prev;
     }
-    node->next= nullptr;
-    node->prev= nullptr;
 }
+
+void SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata* high){
+    if (high && mid!=high && high->is_free){
+        list.remove(high);
+        list.remove(mid);
+        mid->size += high->size + _size_meta_data();
+        mid->is_free = true;
+        list.insert(mid);
+        if (wilderness == high){
+            wilderness = mid;
+        }
+    }
+    if (low && mid!= low&& low->is_free){
+        list.remove(mid);
+        list.remove(low);
+        low->size += mid->size + _size_meta_data();
+        list.insert(low);
+        if (wilderness == mid){
+            wilderness = low;
+        }
+    }
+}
+
+void SortedList::split(MallocMetadata* curr, size_t size) {
+    list.remove(curr);
+    curr->size = size;
+    curr->is_free = false;
+    list.insert(curr);
+    MallocMetadata* free = (MallocMetadata*)(_size_meta_data()+size);
+    free->size = curr->size - size - _size_meta_data();
+    free->is_free = true;
+    list.insert(free);
+    if (wilderness == curr){
+        wilderness = free;
+        return;
+    }
+    MallocMetadata* high;
+    list.getNeighbors(free, nullptr, &high);
+    list.merge(nullptr, free, high);
+}
+
+void SortedList::getNeighbors(MallocMetadata* curr, MallocMetadata** low, MallocMetadata** high) {
+    *low = 0;
+    if (list.head){
+        *low = list.head;
+    }
+    *high = list.wilderness;
+    MallocMetadata* it = list.head;
+    while (it){
+        if (it > *low && it < curr){
+            *low = it;
+        }
+        if ((it + it->size) < *high && it > curr){
+            *high = it;
+        }
+        if (!it->next){
+            break;
+        }
+        it = it->next;
+    }
+}
+
 
 /*------------------------- Malloc functions----------------------------------*/
 
@@ -53,13 +124,9 @@ void* smalloc(size_t size){
     MallocMetadata* iterator = list.head;
     while (iterator){
         if (iterator->is_free && iterator->size >= size){
-            size_t free_space = iterator->size - size - _size_meta_data();
+            long free_space = iterator->size - size - _size_meta_data();
             if (free_space >= 128){
-                list.remove(iterator);
-                MallocMetadata used = {size, false};
-                MallocMetadata free = {free_space, true};
-                list.insert(&used);
-                list.insert(&free);
+                list.split(iterator, size);
             }
             else{
                 iterator->is_free = false;
@@ -72,17 +139,7 @@ void* smalloc(size_t size){
         iterator = iterator->next;
     }
     ///wilderness check
-    MallocMetadata* wilderness = list.head;
-    MallocMetadata* it = list.head;
-    while (it){
-        if (it > wilderness){
-            wilderness = it;
-        }
-        if (!it->next){
-            break;
-        }
-        it = it->next;
-    }
+    MallocMetadata* wilderness = list.wilderness;
     if (!wilderness || !wilderness->is_free){ ///empty heap or full wilderness
         void* program_break = sbrk(size + sizeof(MallocMetadata));
         if (program_break == (void*)(-1)){
@@ -92,6 +149,7 @@ void* smalloc(size_t size){
         curr->size = size;
         curr->is_free = false;
         list.insert(curr);
+        wilderness = curr;
         return (void*)((char*)curr + sizeof(MallocMetadata));
     }
     else { ///wilderness free
@@ -121,43 +179,14 @@ void sfree(void* p){
     MallocMetadata *curr= (MallocMetadata*)((char*)p - sizeof(MallocMetadata));
     if(curr->is_free)
         return;
-    MallocMetadata* lower = 0;
-    if (list.head){
-        lower = list.head;
-    }
-    MallocMetadata* higher = curr;
-    MallocMetadata* it = list.head;
-    while (it){
-        if (it > lower && it < curr){
-            lower = it;
-        }
-        if ((it +it->size) < higher && it > curr){
-            higher = it;
-        }
-        if (!it->next){
-            break;
-        }
-        it = it->next;
-    }
-    bool merged = false;
-    ///curr is not top of the heap and higher is free
-    if (curr != higher && higher->is_free){
-        list.remove(curr);
-        curr->size += higher->size + _size_meta_data();
-        curr->is_free = true;
-        list.insert(curr);
-        list.remove(higher);
-        merged = true;
-    }
-    if (lower && lower->is_free){
-        list.remove(lower);
-        lower->size += curr->size + _size_meta_data();
-        list.insert(lower);
-        list.remove(curr);
-        merged = true;
-    }
+    curr->is_free = true;
+    MallocMetadata* low;
+    MallocMetadata* high;
+    list.getNeighbors(curr, &low, &high);
+    list.merge(low, curr, high);
 }
 
+///ahhh
 void* srealloc(void* oldp, size_t size){
     if (size == 0 || size > 100000000)
         return nullptr;
@@ -314,7 +343,7 @@ size_t _num_allocated_blocks(){
 
 size_t _num_allocated_bytes(){
     update();
-    return stats.num_allocated_bytes;
+    return stats.num_allocated_bytes + stats.num_allocated_blocks * sizeof(MallocMetadata);
 }
 
 size_t _num_meta_data_bytes(){

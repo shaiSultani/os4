@@ -26,9 +26,16 @@ typedef struct stats_t{
 class SortedList{
 public:
     MallocMetadata* head;
-    SortedList() : head(nullptr) {};
+    MallocMetadata* wilderness;
+    SortedList() : head(nullptr), wilderness(nullptr) {};
     void insert(MallocMetadata* metadata);
     void remove(MallocMetadata* node);
+
+    void merge(MallocMetadata *low, MallocMetadata *mid, MallocMetadata *high);
+
+    void split(MallocMetadata *curr, size_t size);
+
+    void getNeighbors(MallocMetadata *curr, MallocMetadata **low, MallocMetadata **high);
 };
 
 void* smalloc(size_t size);
