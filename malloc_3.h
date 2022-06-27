@@ -2,12 +2,14 @@
 // Created by student on 6/22/22.
 //
 
+
 #ifndef OS4_MALLOC_3_H
 #define OS4_MALLOC_3_H
 
 #include <unistd.h>
 #include <cmath>
 #include <cstring>
+#include <sys/mman.h>
 
 typedef struct malloc_meta_data_t{
     size_t size;
@@ -28,14 +30,20 @@ public:
     MallocMetadata* head;
     MallocMetadata* wilderness;
     SortedList() : head(nullptr), wilderness(nullptr) {};
-    void insert(MallocMetadata* metadata);
+    void insert(MallocMetadata* newNode);
     void remove(MallocMetadata* node);
-
     bool merge(MallocMetadata *low, MallocMetadata *mid, MallocMetadata *high);
-
     void split(MallocMetadata *curr, size_t size);
-
     void getNeighbors(MallocMetadata *curr, MallocMetadata **low, MallocMetadata **high);
+};
+
+class mmapList{
+public:
+    MallocMetadata* head;
+    MallocMetadata* tail;
+    mmapList(): head(nullptr), tail(nullptr) {};
+    void insert(MallocMetadata* newNode);
+    void remove(MallocMetadata* node);
 };
 
 void* smalloc(size_t size);

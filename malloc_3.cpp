@@ -3,8 +3,10 @@
 //
 #include "malloc_3.h"
 
+const int MMAP_needed_size = 131072;
 MallocStats stats;
 SortedList list = SortedList();
+mmapList mmap_list = mmapList();
 
 /*-------------------------Sorted List----------------------------------*/
 
@@ -135,7 +137,51 @@ void SortedList::getNeighbors(MallocMetadata* curr, MallocMetadata** low, Malloc
         *low = curr;
     }
 }
-
+/*-------------------------MMAP List------------------------------------------*/
+void mmapList::insert(MallocMetadata* newNode) {
+    // list is empty
+    if(head == nullptr){
+        newNode->prev = nullptr;
+        newNode->next = nullptr;
+        head = newNode;
+        tail = newNode;
+        return;
+    }
+    // only one element
+    if(head == tail) {
+        tail = newNode;
+        tail->prev = head;
+        head->next = tail;
+        tail->next = nullptr;
+        return;
+    }
+    tail->next = newNode;
+    newNode->prev=tail;
+    newNode->next = nullptr;
+    tail = newNode;
+}
+void mmapList::remove(MallocMetadata* node) {
+    if(node == nullptr)
+        return;
+    if( head == tail){ //only one element
+        head = nullptr;
+        tail = nullptr;
+        return;
+    }
+    if(node == head){
+        head = node-> next;
+        head->prev= nullptr;
+        return;
+    }
+    if(node == tail){
+        tail = node->prev;
+        tail->next = nullptr;
+        return;
+    }
+    node->prev->next = node->next;
+    if(node->next != nullptr)
+        node->next->prev = node->prev;
+}
 
 /*------------------------- Malloc functions----------------------------------*/
 
@@ -145,6 +191,18 @@ void* smalloc(size_t size){
     }
     if (size%8){
         size += 8 - size%8;
+    }
+    if(size>=MMAP_needed_size){
+        void* alloc = mmap(nullptr, sizeof(MallocMetadata) + size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1,0);
+        if(alloc == MAP_FAILED)
+            return nullptr;
+        MallocMetadata* new_alloc = (MallocMetadata*)alloc;
+        new_alloc->size = size;
+        new_alloc->is_free = false;
+        new_alloc->next= nullptr;
+        new_alloc->prev= nullptr;
+        mmap_list.insert(new_alloc);
+        return (void*)((char*)alloc + sizeof(MallocMetadata));
     }
     MallocMetadata* iterator = list.head;
     while (iterator){
@@ -180,7 +238,7 @@ void* smalloc(size_t size){
     else { ///wilderness free
         list.remove(wilderness);
         size_t gap = size - wilderness->size;
-        void* program_break = sbrk(gap);
+        sbrk(gap);
         wilderness->size = size;
         wilderness->is_free = false;
         list.insert(wilderness);
@@ -207,6 +265,11 @@ void sfree(void* p){
     MallocMetadata *curr= (MallocMetadata*)((char*)p - sizeof(MallocMetadata));
     if(curr->is_free)
         return;
+    if(curr->size >= MMAP_needed_size){
+        mmap_list.remove(curr);
+        munmap((void*)curr, curr->size + sizeof(MallocMetadata));
+        return;
+    }
     curr->is_free = true;
     MallocMetadata* low;
     MallocMetadata* high;
@@ -219,8 +282,23 @@ void* srealloc(void* oldp, size_t size) {
         return nullptr;
     if (oldp == nullptr)
         return smalloc(size);
-    size += 8 - size%8;
+    if (size%8){
+        size += 8 - size%8;
+    }
     MallocMetadata *curr = (MallocMetadata *) ((char *) oldp - sizeof(MallocMetadata));
+    if(size>= MMAP_needed_size){ //mmap block
+        if(curr->size == size)
+            return oldp;
+        void* new_alloc=smalloc(size);
+        if(!new_alloc)
+            return nullptr;
+        size_t n_size = curr->size < size? curr->size : size;
+        std::memmove(new_alloc,oldp,n_size);
+        mmap_list.remove(curr);
+        munmap((void*)curr, sizeof(MallocMetadata)+ curr->size);
+        return new_alloc;
+    }
+
     MallocMetadata *low;
     MallocMetadata *high;
     list.getNeighbors(curr, &low, &high);
@@ -254,7 +332,7 @@ void* srealloc(void* oldp, size_t size) {
             list.merge(low, curr, nullptr);
             list.remove(low);
             size_t gap = size - low->size;
-            void *program_break = sbrk(gap);
+            sbrk(gap);
             low->size = size;
             low->is_free = false;
             list.insert(low);
@@ -267,7 +345,7 @@ void* srealloc(void* oldp, size_t size) {
     if (list.wilderness == curr) {
         list.remove(curr);
         size_t gap = size - curr->size;
-        void *program_break = sbrk(gap);
+        sbrk(gap);
         curr->size = size;
         curr->is_free = false;
         list.insert(curr);
@@ -304,7 +382,7 @@ void* srealloc(void* oldp, size_t size) {
             low && low != curr && low->is_free) {
             list.merge(low, curr, high);
             size_t gap = -free_space_e;
-            void *program_break = sbrk(gap);
+            sbrk(gap);
             list.remove(low);
             low->size = size;
             list.insert(low);
@@ -315,7 +393,7 @@ void* srealloc(void* oldp, size_t size) {
         if (high && high != curr && high->is_free) {
             list.merge(nullptr, curr, high);
             size_t gap = size - high_size - _size_meta_data() - curr_size;
-            void *program_break = sbrk(gap);
+            sbrk(gap);
             list.remove(curr);
             curr->size = size;
             list.insert(curr);
@@ -345,6 +423,14 @@ void update() {
         if (!it->next) {
             break;
         }
+        it = it->next;
+    }
+    it = mmap_list.head;
+    while(it){
+        stats.num_allocated_blocks++;
+        stats.num_allocated_bytes += it->size;
+        if(!it->next)
+            break;
         it = it->next;
     }
 }
