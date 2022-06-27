@@ -125,7 +125,7 @@ void SortedList::getNeighbors(MallocMetadata* curr, MallocMetadata** low, Malloc
         if (it > *low && it < curr){
             *low = it;
         }
-        if ((it + it->size + _size_meta_data()) < *high && it > curr){
+        if (((char*)it + it->size + _size_meta_data()) <= (char*)*high && it > curr){
             *high = it;
         }
         if (!it->next){
@@ -224,6 +224,9 @@ void* smalloc(size_t size){
     ///wilderness check
     MallocMetadata* wilderness = list.wilderness;
     if (!wilderness || !wilderness->is_free){ ///empty heap or full wilderness
+        if (!wilderness && (size_t)sbrk(0)%8 != 0){
+            sbrk (8 - (size_t)sbrk(0)%8);
+        }
         void* program_break = sbrk(size + sizeof(MallocMetadata));
         if (program_break == (void*)(-1)){
             return nullptr;
@@ -289,7 +292,7 @@ void* srealloc(void* oldp, size_t size) {
     if(size>= MMAP_needed_size){ //mmap block
         if(curr->size == size)
             return oldp;
-        void* new_alloc=smalloc(size);
+        void* new_alloc = smalloc(size);
         if(!new_alloc)
             return nullptr;
         size_t n_size = curr->size < size? curr->size : size;
@@ -308,7 +311,7 @@ void* srealloc(void* oldp, size_t size) {
 
     ///a
     long free_space = curr_size - size;
-    if (free_space) {
+    if (free_space >= 0) {
         if (free_space >= 128) {
             list.split(curr, size);
         } else {
@@ -320,12 +323,13 @@ void* srealloc(void* oldp, size_t size) {
     ///b
     if (low && low != curr && low->is_free) {
         long free_space_b = curr_size + low_size + _size_meta_data() - size;
-        if (free_space_b) {
+        if (free_space_b >= 0) {
             list.merge(low, curr, nullptr);
+            low->is_free = false;
             if (free_space_b >= 128) {
                 list.split(low, size);
             }
-            std::memmove(low + _size_meta_data(), oldp, curr_size);
+            std::memmove((char*)low + _size_meta_data(), oldp, curr_size);
             return (void *) ((char *) low + sizeof(MallocMetadata));
         }
         if (list.wilderness == curr) {
@@ -336,8 +340,8 @@ void* srealloc(void* oldp, size_t size) {
             low->size = size;
             low->is_free = false;
             list.insert(low);
-            std::memmove(low + _size_meta_data(), oldp, curr_size);
-            return (void *) ((char *) curr + sizeof(MallocMetadata));
+            std::memmove((char*)low + _size_meta_data(), oldp, curr_size);
+            return (void *) ((char *) low + sizeof(MallocMetadata));
         }
     }
 
@@ -355,8 +359,9 @@ void* srealloc(void* oldp, size_t size) {
     ///d
     if (high && high != curr && high->is_free) {
         long free_space_d = curr_size + high_size + _size_meta_data() - size;
-        if (free_space_d) {
+        if (free_space_d >= 0) {
             list.merge(nullptr, curr, high);
+            curr->is_free = false;
             if (free_space_d >= 128) {
                 list.split(curr, size);
             }
@@ -367,13 +372,14 @@ void* srealloc(void* oldp, size_t size) {
     ///e
     long free_space_e = curr_size + high_size + low_size + 2 * _size_meta_data() - size;
     if (high && high != curr && high->is_free &&
-        low && low != curr && low->is_free && free_space_e) {
+        low && low != curr && low->is_free && free_space_e >= 0) {
         list.merge(low, curr, high);
+        low->is_free = false;
         if (free_space_e >= 128) {
             list.split(low, size);
         }
-        std::memmove(low + _size_meta_data(), oldp, curr_size);
-        return (void *) ((char *) curr + sizeof(MallocMetadata));
+        std::memmove((char*)low + _size_meta_data(), oldp, curr_size);
+        return (void *) ((char *) low + sizeof(MallocMetadata));
     }
 
     ///f
@@ -387,7 +393,7 @@ void* srealloc(void* oldp, size_t size) {
             low->size = size;
             list.insert(low);
             low->is_free = false;
-            std::memmove(low + _size_meta_data(), oldp, curr_size);
+            std::memmove((char*)low + _size_meta_data(), oldp, curr_size);
             return (void *) ((char *) low + sizeof(MallocMetadata));
         }
         if (high && high != curr && high->is_free) {
@@ -403,8 +409,10 @@ void* srealloc(void* oldp, size_t size) {
     }
 
     ///h
-    sfree(curr + _size_meta_data());
-    return smalloc(size);
+    sfree((char*)curr + _size_meta_data());
+    void* target = smalloc(size);
+    std::memmove(target, oldp, curr_size);
+    return target;
 }
 
 void update() {

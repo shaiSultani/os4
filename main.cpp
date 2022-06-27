@@ -1,5 +1,9 @@
 #include <iostream>
 #include "malloc_3.h"
+static inline size_t aligned_size(size_t size)
+{
+    return (size % 8) ? (size & (size_t)(-8)) + 8 : size;
+}
 
 void get_stats (size_t* num_free_blocks, size_t* num_free_bytes, size_t* num_allocated_blocks, size_t* num_allocated_bytes){
     *num_free_blocks = _num_free_blocks();
@@ -9,52 +13,49 @@ void get_stats (size_t* num_free_blocks, size_t* num_free_bytes, size_t* num_all
 }
 
 int main() {
-    {
-        size_t num_free_blocks;
-        size_t num_free_bytes;
-        size_t num_allocated_blocks;
-        size_t num_allocated_bytes;
-        //verify_blocks(0, 0, 0, 0);
+    size_t num_free_blocks;
+    size_t num_free_bytes;
+    size_t num_allocated_blocks;
+    size_t num_allocated_bytes;
+    get_stats(&num_free_blocks, &num_free_bytes, &num_allocated_blocks, &num_allocated_bytes);
+    //verify_blocks(0, 0, 0, 0);
+    void *base = sbrk(0);
+    char *pad1 = (char *)smalloc(32);
+    char *a = (char *)smalloc(32);
+    char *pad2 = (char *)smalloc(32);
+    char *b = (char *)smalloc(160);
+    char *pad3 = (char *)smalloc(32);
+    //REQUIRE(pad1 != nullptr);
+    //REQUIRE(a != nullptr);
+    //REQUIRE(pad2 != nullptr);
+    //REQUIRE(b != nullptr);
+    //REQUIRE(pad3 != nullptr);
 
-        void *base = sbrk(0);
-        char *a = (char *)smalloc(10);
-        //REQUIRE(a != nullptr);
-        char *b = (char *)smalloc(10);
-        //REQUIRE(b != nullptr);
-        char *c = (char *)smalloc(10);
-        //REQUIRE(c != nullptr);
+    size_t pad_size = 32 * 3;
+    size_t blocks_size = 32 + 160;
 
-        //verify_blocks(3, 16 * 3, 0, 0);
-        //verify_size(base);
+    //verify_blocks(5, blocks_size + pad_size, 0, 0);
+    //verify_size(base);
+    //populate_array(a, 32);
 
-        sfree(b);
-        //verify_blocks(3, 16 * 3, 1, 16);
-        //verify_size(base);
-        sfree(a);
-        //verify_blocks(2, 16 * 3 + _size_meta_data(), 1, 16 * 2 + _size_meta_data());
-        //verify_size(base);
-        sfree(c);
-        //verify_blocks(1, 16 * 3 + _size_meta_data() * 2, 1, 16 * 3 + _size_meta_data() * 2);
-        //verify_size(base);
+    sfree(b);
+    //verify_blocks(5, blocks_size + pad_size, 1, 160);
+    //verify_size(base);
 
-        char *new_a = (char *)smalloc(10);
-        //REQUIRE(a == new_a);
-        char *new_b = (char *)smalloc(10);
-        //REQUIRE(b != new_b);
-        char *new_c = (char *)smalloc(10);
-        //REQUIRE(c != new_c);
+    char *new_a = (char *)srealloc(a, 160);
+    //REQUIRE(new_a != nullptr);
+    //REQUIRE(new_a == b);
+    //verify_blocks(5, blocks_size + pad_size, 1, 32);
+    //verify_size(base);
+    //validate_array(new_a, 32);
 
-        //verify_blocks(3, 16 * 5 + _size_meta_data() * 2, 0, 0);
-        //verify_size(base);
+    sfree(new_a);
+    //verify_blocks(5, blocks_size + pad_size, 2, blocks_size);
+    //verify_size(base);
 
-        sfree(new_a);
-        //verify_blocks(3, 16 * 5 + _size_meta_data() * 2, 1, 16 * 3 + _size_meta_data() * 2);
-        //verify_size(base);
-        sfree(new_b);
-        //verify_blocks(2, 16 * 5 + _size_meta_data() * 3, 1, 16 * 4 + _size_meta_data() * 3);
-        //verify_size(base);
-        sfree(new_c);
-        //verify_blocks(1, 16 * 5 + _size_meta_data() * 4, 1, 16 * 5 + _size_meta_data() * 4);
-        //verify_size(base);
-    }
+    sfree(pad1);
+    sfree(pad2);
+    sfree(pad3);
+    //verify_blocks(1, blocks_size + pad_size + 4 * _size_meta_data(), 1, blocks_size + pad_size + 4 * _size_meta_data());
+    //verify_size(base);
 }
