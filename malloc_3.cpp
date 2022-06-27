@@ -53,7 +53,7 @@ void SortedList::remove(MallocMetadata* node){
     }
 }
 
-void SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata* high){
+bool SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata* high){
     if (high && mid!=high && high->is_free){
         list.remove(high);
         list.remove(mid);
@@ -63,6 +63,7 @@ void SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata*
         if (wilderness == high){
             wilderness = mid;
         }
+        return true;
     }
     if (low && mid!= low&& low->is_free){
         list.remove(mid);
@@ -72,7 +73,9 @@ void SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata*
         if (wilderness == mid){
             wilderness = low;
         }
+        return true;
     }
+    return false;
 }
 
 void SortedList::split(MallocMetadata* curr, size_t size) {
@@ -186,124 +189,118 @@ void sfree(void* p){
     list.merge(low, curr, high);
 }
 
-///ahhh
-void* srealloc(void* oldp, size_t size){
+void* srealloc(void* oldp, size_t size) {
     if (size == 0 || size > 100000000)
         return nullptr;
     if (oldp == nullptr)
         return smalloc(size);
-    MallocMetadata *curr= (MallocMetadata*)((char*)oldp - sizeof(MallocMetadata));
+    MallocMetadata *curr = (MallocMetadata *) ((char *) oldp - sizeof(MallocMetadata));
+    MallocMetadata *low;
+    MallocMetadata *high;
+    list.getNeighbors(curr, &low, &high);
+    size_t low_size = low->size;
+    size_t high_size = high->size;
+    size_t curr_size = curr->size;
 
     ///a
-    size_t free_space = curr->size - size;
-    if (free_space >= 128){
-        list.remove(curr);
-        MallocMetadata old_block = {size, false};
-        MallocMetadata new_block = {free_space, true};
-        list.insert(&old_block);
-        list.insert(&new_block);
-        return oldp;
-    }
-
-    ///find lower and upper adj for later use
-    MallocMetadata* lower = 0;
-    if (list.head){
-        lower = list.head;
-    }
-    MallocMetadata* higher = curr;
-    MallocMetadata* it = list.head;
-    while (it){
-        if (it > lower && it < curr){
-            lower = it;
+    long free_space = curr_size - size;
+    if (free_space) {
+        if (free_space >= 128) {
+            list.split(curr, size);
+        } else {
+            curr->is_free = false;
         }
-        if ((it +it->size) < higher && it > curr){
-            higher = it;
-        }
-        if (!it->next){
-            break;
-        }
-        it = it->next;
+        return (void *) ((char *) curr + sizeof(MallocMetadata));
     }
 
     ///b
-    size_t lower_size = lower->size;
-    bool merged_available = false;
-    if (lower && lower->is_free){
-        merged_available = true;
-        size_t b_free_space = lower->size + curr->size + _size_meta_data() - size;
-        if (b_free_space <128 && b_free_space >= 0) { ///exact match
-            list.remove(lower);
-            list.remove(curr);
-            lower->size += curr->size + _size_meta_data();
-            list.insert(lower);
-            std::memmove(lower + _size_meta_data(), oldp, curr->size);
-            return (void *) ((char *) lower + sizeof(MallocMetadata));
+    if (low && low != curr && low->is_free) {
+        long free_space_b = curr_size + low_size + _size_meta_data() - size;
+        if (free_space_b) {
+            list.merge(low, curr, nullptr);
+            if (free_space_b >= 128) {
+                list.split(low, size);
+            }
+            std::memmove(low + _size_meta_data(), oldp, curr_size);
+            return (void *) ((char *) low + sizeof(MallocMetadata));
         }
-        if (b_free_space >=128){ ///enough to split
-            list.remove(lower);
-            list.remove(curr);
-            MallocMetadata old_block = {size, false};
-            MallocMetadata new_block = {b_free_space, true};
-            list.insert(&old_block);
-            list.insert(&new_block);
-            return (void *) ((char *) lower + sizeof(MallocMetadata));
-        }
-        if ((curr + curr->size == (MallocMetadata*)sbrk(0))){///the block is wilderness, need to realloc
-            list.remove(curr);
-            list.remove(lower);
-            size_t gap = size - lower->size - curr->size;
-            void* program_break = sbrk(gap);
-            lower->size = size;
-            lower->is_free = false;
-            list.insert(lower);
-            std::memmove(lower + _size_meta_data(), oldp, curr->size);
-            return (void*)((char*)lower + sizeof(MallocMetadata));
+        if (list.wilderness == curr) {
+            list.merge(low, curr, nullptr);
+            list.remove(low);
+            size_t gap = size - low->size;
+            void *program_break = sbrk(gap);
+            low->size = size;
+            low->is_free = false;
+            list.insert(low);
+            std::memmove(low + _size_meta_data(), oldp, curr_size);
+            return (void *) ((char *) curr + sizeof(MallocMetadata));
         }
     }
 
     ///c
-    if (curr == higher){///the block is wilderness, need to realloc
+    if (list.wilderness == curr) {
         list.remove(curr);
         size_t gap = size - curr->size;
-        sbrk(gap);
+        void *program_break = sbrk(gap);
         curr->size = size;
         curr->is_free = false;
         list.insert(curr);
-        return (void*)((char*)lower + sizeof(MallocMetadata));
+        return (void *) ((char *) curr + sizeof(MallocMetadata));
     }
 
     ///d
-    if (curr != higher && higher->is_free) {
-        size_t d_free_space = higher->size + curr->size + _size_meta_data() - size;
-        size_t higher_size = higher->size;
-        if (d_free_space <128 && d_free_space >= 0) { ///exact match
-            list.remove(curr);
-            list.remove(higher);
-            curr->size += higher->size + _size_meta_data();
-            list.insert(curr);
-            return (void *) ((char *) curr + sizeof(MallocMetadata));
-        }
-        if (d_free_space >=128){ ///enough to split
-            list.remove(higher);
-            list.remove(curr);
-            MallocMetadata old_block = {size, false};
-            MallocMetadata new_block = {d_free_space, true};
-            list.insert(&old_block);
-            list.insert(&new_block);
+    if (high && high != curr && high->is_free) {
+        long free_space_d = curr_size + high_size + _size_meta_data() - size;
+        if (free_space_d) {
+            list.merge(nullptr, curr, high);
+            if (free_space_d >= 128) {
+                list.split(curr, size);
+            }
             return (void *) ((char *) curr + sizeof(MallocMetadata));
         }
     }
-    size_t old_size = curr->size;
-    if( old_size >= size)
-        return oldp;
-    void* newp = smalloc(size);
-    if (newp == nullptr)
-        return nullptr;
-    std::memmove(newp, oldp, curr->size);
-    curr->is_free = true;
-    stats.num_free_bytes += old_size;
-    stats.num_free_blocks ++;
-    return newp;
+
+    ///e
+    long free_space_e = curr_size + high_size + low_size + 2 * _size_meta_data() - size;
+    if (high && high != curr && high->is_free &&
+        low && low != curr && low->is_free && free_space_e) {
+        list.merge(low, curr, high);
+        if (free_space_e >= 128) {
+            list.split(low, size);
+        }
+        std::memmove(low + _size_meta_data(), oldp, curr_size);
+        return (void *) ((char *) curr + sizeof(MallocMetadata));
+    }
+
+    ///f
+    if (list.wilderness == high){
+        if (high && high != curr && high->is_free &&
+            low && low != curr && low->is_free) {
+            list.merge(low, curr, high);
+            size_t gap = -free_space_e;
+            void *program_break = sbrk(gap);
+            list.remove(low);
+            low->size = size;
+            list.insert(low);
+            low->is_free = false;
+            std::memmove(low + _size_meta_data(), oldp, curr_size);
+            return (void *) ((char *) low + sizeof(MallocMetadata));
+        }
+        if (high && high != curr && high->is_free) {
+            list.merge(nullptr, curr, high);
+            size_t gap = size - high_size - _size_meta_data() - curr_size;
+            void *program_break = sbrk(gap);
+            list.remove(curr);
+            curr->size = size;
+            list.insert(curr);
+            curr->is_free = false;
+            return (void *) ((char *) curr + sizeof(MallocMetadata));
+        }
+    }
+
+    ///h
+    sfree(curr + _size_meta_data());
+    return smalloc(size);
 }
 
 void update() {

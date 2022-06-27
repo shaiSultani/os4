@@ -31,7 +31,7 @@ public:
     void insert(MallocMetadata* metadata);
     void remove(MallocMetadata* node);
 
-    void merge(MallocMetadata *low, MallocMetadata *mid, MallocMetadata *high);
+    bool merge(MallocMetadata *low, MallocMetadata *mid, MallocMetadata *high);
 
     void split(MallocMetadata *curr, size_t size);
 
