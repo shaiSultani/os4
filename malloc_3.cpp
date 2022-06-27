@@ -9,15 +9,16 @@ SortedList list = SortedList();
 /*-------------------------Sorted List----------------------------------*/
 
 void SortedList::insert(MallocMetadata* newNode) {
+    if (!wilderness || newNode > wilderness){
+        wilderness = newNode;
+    }
     if (head == nullptr){//if list is empty
         head = newNode;
-        wilderness = newNode;
     }
     else if (head->size > newNode->size || (head->size == newNode->size && head > newNode)) {  // insert as first node
         newNode->next = head;
         newNode->next->prev = newNode;
         head = newNode;
-        wilderness = newNode->next;
     } else {
         MallocMetadata *temp = head;
         while (temp->next && (temp->next->size < newNode->size || (temp->next->size == newNode->size && temp->next < newNode))) {
@@ -27,23 +28,36 @@ void SortedList::insert(MallocMetadata* newNode) {
         newNode->next = temp->next;
         if (temp->next) //newNode is not inserted at the end of the list
             newNode->next->prev = newNode;
-        else{
-            wilderness = newNode;
-        }
         temp->next = newNode;
         newNode->prev = temp;
     }
 }
 
 void SortedList::remove(MallocMetadata* node){
-    if(node == head){
-        head = node->next;
-        head->prev = nullptr;
-        return;
+    if (node == wilderness){
+        MallocMetadata* it = list.head;
+        if (!it){
+            wilderness = nullptr;
+        }
+        MallocMetadata* new_wilderness = 0;
+        while (it){
+            if (it > new_wilderness && it != node){
+                new_wilderness = it;
+            }
+            if (it->next){
+                break;
+            }
+            it = it->next;
+        }
     }
-    if(node == wilderness){
-        wilderness = node->prev;
-        wilderness->next = nullptr;
+    if(node == head){
+        if (head->next){
+            head = node->next;
+            head->prev = nullptr;
+            return;
+        }
+        head = nullptr;
+        wilderness = nullptr;
         return;
     }
     else{
@@ -54,6 +68,7 @@ void SortedList::remove(MallocMetadata* node){
 }
 
 bool SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata* high){
+    bool merged = false;
     if (high && mid!=high && high->is_free){
         list.remove(high);
         list.remove(mid);
@@ -63,7 +78,7 @@ bool SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata*
         if (wilderness == high){
             wilderness = mid;
         }
-        return true;
+        merged = true;
     }
     if (low && mid!= low&& low->is_free){
         list.remove(mid);
@@ -73,18 +88,21 @@ bool SortedList::merge(MallocMetadata* low, MallocMetadata* mid, MallocMetadata*
         if (wilderness == mid){
             wilderness = low;
         }
-        return true;
+        merged = true;
     }
-    return false;
+    return merged;
 }
 
 void SortedList::split(MallocMetadata* curr, size_t size) {
+    size_t curr_size = curr->size;
     list.remove(curr);
     curr->size = size;
     curr->is_free = false;
     list.insert(curr);
-    MallocMetadata* free = (MallocMetadata*)(_size_meta_data()+size);
-    free->size = curr->size - size - _size_meta_data();
+    void* dst = (char*)curr + _size_meta_data() + size;
+    MallocMetadata* free = static_cast<MallocMetadata *>(std::memmove(dst, curr,
+                                                                      _size_meta_data()));
+    free->size = curr_size - size - _size_meta_data();
     free->is_free = true;
     list.insert(free);
     if (wilderness == curr){
@@ -92,28 +110,29 @@ void SortedList::split(MallocMetadata* curr, size_t size) {
         return;
     }
     MallocMetadata* high;
-    list.getNeighbors(free, nullptr, &high);
-    list.merge(nullptr, free, high);
+    MallocMetadata* low;
+    list.getNeighbors(free, &low, &high);
+    list.merge(free, free, high);
 }
 
 void SortedList::getNeighbors(MallocMetadata* curr, MallocMetadata** low, MallocMetadata** high) {
     *low = 0;
-    if (list.head){
-        *low = list.head;
-    }
     *high = list.wilderness;
     MallocMetadata* it = list.head;
     while (it){
         if (it > *low && it < curr){
             *low = it;
         }
-        if ((it + it->size) < *high && it > curr){
+        if ((it + it->size + _size_meta_data()) < *high && it > curr){
             *high = it;
         }
         if (!it->next){
             break;
         }
         it = it->next;
+    }
+    if (*low == 0){
+        *low = curr;
     }
 }
 
