@@ -343,7 +343,7 @@ size_t _num_allocated_blocks(){
 
 size_t _num_allocated_bytes(){
     update();
-    return stats.num_allocated_bytes + stats.num_allocated_blocks * sizeof(MallocMetadata);
+    return stats.num_allocated_bytes;
 }
 
 size_t _num_meta_data_bytes(){
