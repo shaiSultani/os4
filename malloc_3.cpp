@@ -124,6 +124,9 @@ void* smalloc(size_t size){
     if (size == 0 || size > 100000000){
         return nullptr;
     }
+    if (size%8){
+        size += 8 - size%8;
+    }
     MallocMetadata* iterator = list.head;
     while (iterator){
         if (iterator->is_free && iterator->size >= size){
@@ -168,6 +171,9 @@ void* smalloc(size_t size){
 
 void* scalloc(size_t num, size_t size){
     size_t total_size = num * size;
+    if (total_size%8){
+        total_size += 8 - total_size%8;
+    }
     void* mem_block = smalloc(total_size);
     if(!mem_block){
         return nullptr;
@@ -194,6 +200,7 @@ void* srealloc(void* oldp, size_t size) {
         return nullptr;
     if (oldp == nullptr)
         return smalloc(size);
+    size += 8 - size%8;
     MallocMetadata *curr = (MallocMetadata *) ((char *) oldp - sizeof(MallocMetadata));
     MallocMetadata *low;
     MallocMetadata *high;
