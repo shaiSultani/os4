@@ -298,7 +298,7 @@ void* srealloc(void* oldp, size_t size) {
         size_t n_size = curr->size < size? curr->size : size;
         std::memmove(new_alloc,oldp,n_size);
         mmap_list.remove(curr);
-        munmap((void*)curr, sizeof(MallocMetadata)+ curr->size);
+        munmap(curr, sizeof(MallocMetadata)+ curr->size);
         return new_alloc;
     }
 
